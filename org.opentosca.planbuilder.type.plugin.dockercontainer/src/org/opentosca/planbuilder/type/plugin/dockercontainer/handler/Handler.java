@@ -89,7 +89,6 @@ public class Handler {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		
 
 		// fetch (optional) SSHPort variable
 		final Variable sshPortVar = templateContext.getPropertyVariable(nodeTemplate, "SSHPort");
@@ -105,6 +104,27 @@ public class Handler {
 		
 		// fetch (optional) NetworkMode variable
 		Variable networkModeVar = templateContext.getPropertyVariable(nodeTemplate, "NetworkMode");
+		
+		// fetch (optional) IP variable that can be mapped into the container via Environment Variables
+		Variable toscaContainerIP = templateContext.getPropertyVariable(nodeTemplate, "ServerIP");
+		
+		// create variable for the Environment Variables of the Docker container
+		Variable environmentVariableVar = null;
+		if (toscaContainerIP != null) {
+			environmentVariableVar = templateContext.createGlobalStringVariable("dockerContainerEnvironmentVariables" + System.currentTimeMillis(), "");
+			
+			try {
+				Node assignContainerEnvironmentNode = this.planBuilderFragments.createAssignXpathQueryToStringVarFragmentAsNode("assignEnvironmentVariables", "concat('SERVER_IP=',$"+toscaContainerIP.getName()+")", environmentVariableVar.getName());
+				assignContainerEnvironmentNode = templateContext.importNode(assignContainerEnvironmentNode);
+				templateContext.getProvisioningPhaseElement().appendChild(assignContainerEnvironmentNode);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (SAXException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}		
 		
 		// fetch DockerEngine
 		final AbstractNodeTemplate dockerEngineNode = this.getDockerEngineNode(nodeTemplate);
@@ -124,16 +144,16 @@ public class Handler {
 			// handle with DA -> construct URL to the DockerImage .zip
 
 			final AbstractDeploymentArtifact da = this.fetchFirstDockerContainerDA(nodeTemplate);
-			this.handleWithDA(templateContext, dockerEngineNode, da, portMappingVar, dockerEngineUrlVar, sshPortVar, containerIpVar, containerIdVar, privilegedVar, networkModeVar);
+			this.handleWithDA(templateContext, dockerEngineNode, da, portMappingVar, dockerEngineUrlVar, sshPortVar, containerIpVar, containerIdVar, privilegedVar, networkModeVar, environmentVariableVar);
 		} else {
 			// handle with imageId
-			return this.handleWithImageId(templateContext, dockerEngineNode, containerImageVar, portMappingVar, dockerEngineUrlVar, sshPortVar, containerIpVar, containerIdVar, privilegedVar, networkModeVar);
+			return this.handleWithImageId(templateContext, dockerEngineNode, containerImageVar, portMappingVar, dockerEngineUrlVar, sshPortVar, containerIpVar, containerIdVar, privilegedVar, networkModeVar, environmentVariableVar);
 		}
 
 		return true;
 	}
 	
-	private boolean handleWithImageId(TemplatePlanContext context, AbstractNodeTemplate dockerEngineNode, Variable containerImageVar, Variable portMappingVar, Variable dockerEngineUrlVar, Variable sshPortVar, Variable containerIpVar, Variable containerIdVar, Variable privilegedVar, Variable networkModeVar) {
+	private boolean handleWithImageId(TemplatePlanContext context, AbstractNodeTemplate dockerEngineNode, Variable containerImageVar, Variable portMappingVar, Variable dockerEngineUrlVar, Variable sshPortVar, Variable containerIpVar, Variable containerIdVar, Variable privilegedVar, Variable networkModeVar, Variable environmentVariableVar) {
 		
 		// map properties to input and output parameters
 		final Map<String, Variable> createDEInternalExternalPropsInput = new HashMap<>();
@@ -142,6 +162,10 @@ public class Handler {
 		createDEInternalExternalPropsInput.put("ContainerImage", containerImageVar);
 		createDEInternalExternalPropsInput.put("DockerEngineURL", dockerEngineUrlVar);
 		createDEInternalExternalPropsInput.put("ContainerPorts", portMappingVar);
+		
+		if (environmentVariableVar != null) {
+			createDEInternalExternalPropsInput.put("ContainerEnv", environmentVariableVar);
+		}
 
 		if (sshPortVar != null) {
 			// we expect a sshPort back -> add to output handling
@@ -169,7 +193,7 @@ public class Handler {
 		return true;
 	}
 	
-	private boolean handleWithDA(TemplatePlanContext context, AbstractNodeTemplate dockerEngineNode, AbstractDeploymentArtifact da, Variable portMappingVar, Variable dockerEngineUrlVar, Variable sshPortVar, Variable containerIpVar, Variable containerIdVar, Variable privilegedVar, Variable networkModeVar) {
+	private boolean handleWithDA(TemplatePlanContext context, AbstractNodeTemplate dockerEngineNode, AbstractDeploymentArtifact da, Variable portMappingVar, Variable dockerEngineUrlVar, Variable sshPortVar, Variable containerIpVar, Variable containerIdVar, Variable privilegedVar, Variable networkModeVar, Variable environmentVariableVar) {
 		context.addStringValueToPlanRequest("csarEntrypoint");
 		final String artifactPathQuery = this.planBuilderFragments.createXPathQueryForURLRemoteFilePath(da.getArtifactRef().getArtifactReferences().get(0).getReference());
 
@@ -196,6 +220,10 @@ public class Handler {
 		createDEInternalExternalPropsInput.put("ImageLocation", dockerContainerFileRefVar);
 		createDEInternalExternalPropsInput.put("DockerEngineURL", dockerEngineUrlVar);
 		createDEInternalExternalPropsInput.put("ContainerPorts", portMappingVar);	
+		
+		if (environmentVariableVar != null) {
+			createDEInternalExternalPropsInput.put("ContainerEnv", environmentVariableVar);
+		}
 		
 		if (privilegedVar != null) {
 			createDEInternalExternalPropsInput.put("Privileged", privilegedVar);
